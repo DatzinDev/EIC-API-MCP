@@ -10,6 +10,7 @@ import io
 import json
 import os
 import re
+import tempfile
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -51,9 +52,17 @@ def download(url: str, offline: bool) -> Path:
     return dest
 
 
+def member(z: zipfile.ZipFile, suffix: str) -> str:
+    return next(n for n in z.namelist() if n.endswith(suffix))
+
+
+def open_member(z: zipfile.ZipFile, suffix: str, encoding: str) -> io.TextIOWrapper:
+    return io.TextIOWrapper(z.open(member(z, suffix)), encoding=encoding, newline="")
+
+
 def read_member(z: zipfile.ZipFile, suffix: str, encoding: str) -> str:
-    name = next(n for n in z.namelist() if n.endswith(suffix))
-    return z.read(name).decode(encoding)
+    with open_member(z, suffix, encoding) as f:
+        return f.read()
 
 
 def parse_metadata(text: str) -> dict:
@@ -96,15 +105,16 @@ def nivel_2025(ent: str, mun: str, loc: str) -> tuple[str, str | None]:
     return "localidad", f"{ent}{mun}0000"
 
 
-def parse_2025(z: zipfile.ZipFile, ds: str) -> dict:
-    rows = list(csv.DictReader(io.StringIO(read_member(z, "conjunto_de_datos/conjunto_datos_eic2025_105.csv", "latin-1"))))
-    cols = list(rows[0])
-    indicadores = cols[cols.index("ESTIMADOR") + 1:]
-
-    geos, est = {}, {}
-    for r in rows:
-        g = r["CVEGEO"]
-        if g not in geos:
+def parse_2025(z: zipfile.ZipFile, ds: str, con: duckdb.DuckDBPyConnection) -> dict:
+    archivo = "conjunto_de_datos/conjunto_datos_eic2025_105.csv"
+    with open_member(z, archivo, "latin-1") as f:  # una pasada ligera solo para los lugares
+        reader = csv.DictReader(f)
+        indicadores = reader.fieldnames[reader.fieldnames.index("ESTIMADOR") + 1:]
+        geos = {}
+        for r in reader:
+            g = r["CVEGEO"]
+            if g in geos:
+                continue
             nom_mun, attrs = r["NOM_MUN"], {}
             for marca, significado in MARCAS_MUN.items():
                 if nom_mun.endswith(marca):
@@ -115,12 +125,19 @@ def parse_2025(z: zipfile.ZipFile, ds: str) -> dict:
             geos[g] = dict(dataset_id=ds, cvegeo=g, nivel=nivel, cve_ent=r["CVE_ENT"], cve_mun=r["CVE_MUN"],
                            cve_loc=r["CVE_LOC"], cve_distrito=None, nombre=nombre, nom_ent=r["NOM_ENT"],
                            nom_mun=nom_mun, padre_cvegeo=padre, atributos=json.dumps(attrs) if attrs else None)
-        campo = ESTIMADORES_2025[r["ESTIMADOR"]]
-        for ind in indicadores:
-            e = est.setdefault((g, ind), {"nota": None})
-            e[campo] = num(r[ind])
-            if campo == "valor" and e["valor"] is None:
-                e["nota"] = r[ind] or None  # MI | NA
+
+    # El CSV ancho (5 filas por lugar, una por estimador) pasa a ~950 000 filas largas. Lo hace DuckDB, con su
+    # límite de memoria: armado en Python el ETL pasaba de 2 GB y el contenedor (mem_limit 1g) lo mataba.
+    por_estimador = ", ".join(f"max(TRY_CAST(v AS DOUBLE)) FILTER (ESTIMADOR = '{e}') AS {campo}"
+                              for e, campo in ESTIMADORES_2025.items())
+    with tempfile.TemporaryDirectory() as tmp:
+        ruta = z.extract(member(z, archivo), tmp)
+        estimacion = con.execute(f"""
+            WITH l AS (FROM read_csv(?, all_varchar = true, encoding = 'latin-1')
+                       UNPIVOT INCLUDE NULLS (v FOR indicador IN ({", ".join(f'"{i}"' for i in indicadores)})))
+            SELECT ?::VARCHAR AS dataset_id, CVEGEO AS cvegeo, indicador, {por_estimador},
+                   CASE WHEN valor IS NULL THEN max(v) FILTER (ESTIMADOR = 'Valor') END AS nota  -- MI | NA
+            FROM l GROUP BY CVEGEO, indicador""", [ruta, ds]).to_arrow_table()
 
     temas, inds, tema_actual = {}, [], None
     for x in csv.reader(io.StringIO(read_member(z, "diccionario_datos_eic2025_105.csv", "utf-8"))):
@@ -134,7 +151,7 @@ def parse_2025(z: zipfile.ZipFile, ds: str) -> dict:
 
     return dict(
         geografia=list(geos.values()),
-        estimacion=[dict(dataset_id=ds, cvegeo=g, indicador=i, **e) for (g, i), e in est.items()],
+        estimacion=estimacion,
         indicador=inds,
         tema=[dict(dataset_id=ds, id=i, nombre=n) for n, i in temas.items()],
         metadata=parse_metadata(read_member(z, "metadatos_eic2025_105.txt", "utf-8")),
@@ -165,7 +182,7 @@ def tema_2015(codigo: str) -> int:
             return tid
     raise ValueError(f"{codigo} sin tema en TEMAS_2015")
 
-def parse_2015(z: zipfile.ZipFile, ds: str) -> dict:
+def parse_2015(z: zipfile.ZipFile, ds: str, con: duckdb.DuckDBPyConnection) -> dict:
     cat = {(r["cve_ent"], r["cve_distrito"]): r
            for r in csv.DictReader(io.StringIO(read_member(z, "cat_distritos.csv", "utf-8-sig")))}
     rows = list(csv.DictReader(io.StringIO(read_member(z, "conjunto_de_datos/eiege_eic_2015.csv", "utf-8-sig"))))
@@ -223,9 +240,9 @@ SOURCES = [
 
 # ---------- load ----------
 
-def insert(con: duckdb.DuckDBPyConnection, table: str, rows: list[dict]) -> None:
-    if rows:
-        con.register("_rows", pa.Table.from_pylist(rows))
+def insert(con: duckdb.DuckDBPyConnection, table: str, rows: list[dict] | pa.Table) -> None:
+    if len(rows):
+        con.register("_rows", rows if isinstance(rows, pa.Table) else pa.Table.from_pylist(rows))
         con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM _rows")
         con.unregister("_rows")
 
@@ -292,7 +309,9 @@ def run(db: Path, offline: bool) -> None:
     tmp = db.with_suffix(".tmp")
     tmp.unlink(missing_ok=True)
     db.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(tmp))
+    # Límite propio para no pasarse del mem_limit del contenedor: DuckDB usa disco si le falta memoria, y cada
+    # hilo extra suma ~150 MB al leer el CSV ancho de 2025 (el contenedor tiene 1 CPU de todos modos).
+    con = duckdb.connect(str(tmp), config={"memory_limit": "256MB", "threads": 1})
     con.execute(SCHEMA.read_text())
     entidades = {}
     now = datetime.now(timezone.utc)
@@ -300,7 +319,7 @@ def run(db: Path, offline: bool) -> None:
     for src in SOURCES:
         print(f"[{src['id']}]")
         with zipfile.ZipFile(download(src["url"], offline)) as z:
-            data = src["parser"](z, src["id"])
+            data = src["parser"](z, src["id"], con)
         meta = data.pop("metadata")
         insert(con, "dataset", [dict(id=src["id"], anio=src["anio"], titulo=meta["title"], geografia=src["geografia"],
                                      fuente_url=src["url"], licencia=meta.get("license"),
@@ -310,6 +329,7 @@ def run(db: Path, offline: bool) -> None:
             print(f"  {table}: {len(rows):,}")
         # El dataset más reciente (último en SOURCES) define el nombre oficial.
         entidades |= {g["cve_ent"]: g["nom_ent"] for g in data["geografia"] if g["nivel"] in ("nacional", "entidad")}
+        del data  # el último dataset seguiría en memoria durante la exportación
 
     insert(con, "entidad", [dict(cve_ent=k, nombre=v) for k, v in sorted(entidades.items())])
 
