@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EIC · API y MCP de la Encuesta Intercensal</title>
+<meta name="description" content="La Encuesta Intercensal 2015 y 2025 del INEGI como API REST pública y como servidor MCP para asistentes de IA. Gratis, abierta y con la precisión estadística de cada cifra.">
+<meta property="og:title" content="EIC: la Encuesta Intercensal del INEGI como API y MCP">
+<meta property="og:description" content="Consulta la Intercensal 2015 y 2025 desde código, pandas o tu asistente de IA.">
+<meta property="og:url" content="https://eic.datzin.com.mx/">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2315233A'/><line x1='7' y1='16' x2='25' y2='16' stroke='%23F2A5C9' stroke-width='3' stroke-linecap='round'/><circle cx='17' cy='16' r='5' fill='%23E4007C'/></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Schibsted+Grotesk:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #F3F5F8;
+  --surface: #FFFFFF;
+  --ink: #15233A;
+  --ink-2: #46546A;
+  --muted: #6E7B8F;
+  --line: #D9DFE7;
+  --accent: #C8006A;        /* rosa mexicano, oscurecido para texto sobre blanco */
+  --accent-mark: #E4007C;
+  --accent-soft: #FBE3EF;
+  --code-bg: #15233A;
+  --code-ink: #E3E9F2;
+  --code-dim: #8D9BB3;
+  --ok: #1E7A4F;
+  --warn: #9A6200;
+  --sans: "Schibsted Grotesk", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0E1626;
+    --surface: #152036;
+    --ink: #E6EBF2;
+    --ink-2: #B4BFCF;
+    --muted: #8593A8;
+    --line: #26334D;
+    --accent: #FF5AAA;
+    --accent-mark: #FF4FA3;
+    --accent-soft: #3A1830;
+    --code-bg: #0A111E;
+    --code-ink: #DCE3EE;
+    --code-dim: #7D8BA3;
+    --ok: #5BC98F;
+    --warn: #E0A63A;
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 1.0625rem/1.6 var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+code, pre, kbd { font-family: var(--mono); font-size: 0.875em; }
+:not(pre) > code { overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--line); padding: 0.05em 0.35em; border-radius: 4px; }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+
+/* ---------- cabecera ---------- */
+.top { border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 10; }
+.top .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+.marca { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.15rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+.marca svg { width: 26px; height: 26px; }
+.top nav { display: flex; gap: 20px; margin-left: auto; overflow-x: auto; scrollbar-width: none; }
+.top nav a { color: var(--ink-2); text-decoration: none; font-weight: 500; font-size: 0.95rem; white-space: nowrap; }
+.top nav a:hover { color: var(--ink); }
+@media (max-width: 720px) { .top nav a.opc { display: none; } }
+
+/* ---------- portada ---------- */
+.hero { padding: 64px 0 56px; }
+.hero .wrap { display: grid; gap: 48px; align-items: start; }
+@media (min-width: 960px) { .hero .wrap { grid-template-columns: 1.05fr 1fr; gap: 56px; } }
+.hero .wrap > *, .cols > *, .constructor > * { min-width: 0; }
+h1 {
+  font-weight: 800;
+  font-size: clamp(2.3rem, 5.2vw, 3.7rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin: 0 0 24px;
+  max-width: 14ch;
+}
+.lede { font-size: 1.2rem; color: var(--ink-2); max-width: 36em; margin: 0 0 32px; }
+.acciones { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 36px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: 700 1rem var(--sans);
+  padding: 12px 20px; border-radius: 8px;
+  border: 1.5px solid var(--ink); color: var(--ink); background: transparent;
+  text-decoration: none; cursor: pointer;
+}
+.btn.pri { background: var(--ink); color: var(--bg); }
+.btn:hover { background: var(--ink); color: var(--bg); }
+.btn.pri:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.extremos { display: grid; gap: 10px; margin: 0; }
+.extremos div { display: grid; grid-template-columns: 4.5rem 1fr; gap: 12px; align-items: baseline; }
+.extremos dt { color: var(--muted); font-size: 0.9rem; }
+.extremos dd { margin: 0; font-family: var(--mono); font-size: 0.92rem; overflow-wrap: anywhere; }
+
+/* gráfica de intervalos */
+.fig { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 20px 16px; }
+.fig h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 4px; line-height: 1.3; }
+.fig .sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 16px; }
+.plot { display: grid; grid-template-columns: minmax(5.5rem, 9rem) 1fr; column-gap: 12px; font-size: 0.8rem; }
+.plot .et { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 15px; }
+.plot .pista { position: relative; height: 15px; }
+.plot .pista::before { /* referencia nacional */
+  content: ""; position: absolute; top: -1px; bottom: -1px; left: var(--ref, -10%);
+  width: 1px; background: var(--accent-mark); opacity: 0.55;
+}
+.plot .ic { position: absolute; top: 6.5px; height: 2px; border-radius: 1px; background: var(--ink); opacity: 0.32; }
+.plot .pt { position: absolute; top: 3.5px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: var(--ink); box-shadow: 0 0 0 2px var(--surface); }
+.plot .fila { display: contents; }
+.plot .fila:hover .et, .plot .fila.on .et { color: var(--ink); font-weight: 700; }
+.plot .fila:hover .pt, .plot .fila.on .pt { background: var(--accent-mark); }
+.plot .fila:hover .ic, .plot .fila.on .ic { background: var(--accent-mark); opacity: 0.7; }
+.plot .eje { position: relative; height: 20px; color: var(--muted); font-size: 0.75rem; border-top: 1px solid var(--line); margin-top: 6px; }
+.plot .eje span { position: absolute; top: 3px; transform: translateX(-50%); white-space: nowrap; }
+.plot .eje span:last-child { transform: translateX(-100%); }
+.lectura { margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); font-size: 0.92rem; min-height: 3.2em; }
+.lectura b { font-weight: 700; }
+.lectura .ref { display: inline-block; width: 12px; height: 2px; background: var(--accent-mark); vertical-align: middle; margin-right: 6px; }
+.fig details { margin-top: 10px; font-size: 0.88rem; color: var(--muted); }
+.fig details summary { cursor: pointer; }
+.fig table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 0.85rem; color: var(--ink); }
+.fig td, .fig th { text-align: right; padding: 3px 6px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.fig td:first-child, .fig th:first-child { text-align: left; }
+.cargando { color: var(--muted); padding: 40px 0; text-align: center; }
+
+/* ---------- secciones ---------- */
+section { padding: 72px 0; border-top: 1px solid var(--line); }
+h2.sec { font-size: clamp(1.75rem, 3.2vw, 2.4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 0 0 16px; max-width: 22ch; }
+h3 { font-size: 1.15rem; font-weight: 700; margin: 0 0 8px; letter-spacing: -0.01em; }
+.intro { color: var(--ink-2); max-width: 40em; margin: 0 0 40px; font-size: 1.1rem; }
+.cols { display: grid; gap: 40px; }
+@media (min-width: 880px) { .cols { grid-template-columns: 1fr 1fr; gap: 56px; } }
+
+/* qué es */
+.datasets { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+.datasets th { text-align: left; font-weight: 500; color: var(--muted); font-size: 0.85rem; padding: 0 12px 8px 0; border-bottom: 1px solid var(--ink); }
+.datasets td { padding: 14px 12px 14px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.datasets td:first-child { font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; line-height: 1.1; }
+.tabla-scroll { overflow-x: auto; }
+.cv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; margin: 20px 0 12px; border-radius: 8px; overflow: hidden; }
+.cv div { background: var(--surface); padding: 12px 14px; font-size: 0.9rem; }
+.cv b { display: block; font-size: 1rem; }
+.cv .a b { color: var(--ok); } .cv .m b { color: var(--warn); } .cv .b b { color: var(--accent); }
+.nota { color: var(--muted); font-size: 0.92rem; }
+
+/* bloques de código */
+.codigo { position: relative; background: var(--code-bg); color: var(--code-ink); border-radius: 10px; margin: 0 0 16px; }
+.codigo pre { margin: 0; padding: 16px 18px; overflow-x: auto; line-height: 1.55; font-size: 0.85rem; white-space: pre; }
+.codigo .com { color: var(--code-dim); }
+.codigo .copiar { position: absolute; top: 8px; right: 8px; }
+.copiar {
+  font: 500 0.8rem var(--sans); color: var(--code-ink); background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.16); border-radius: 6px; padding: 4px 10px; cursor: pointer;
+}
+.copiar:hover { background: rgba(255,255,255,0.18); }
+.codigo:has(.copiar) pre { padding-right: 84px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* rutas */
+.rutas { display: grid; gap: 0; margin: 0; }
+.rutas div { display: grid; gap: 4px 20px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rutas dt { font-family: var(--mono); font-size: 0.88rem; overflow-wrap: anywhere; }
+.rutas dd { margin: 0; color: var(--ink-2); font-size: 0.95rem; }
+
+/* ---------- constructor ---------- */
+.atajos { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 28px; padding: 0; list-style: none; }
+.atajos button {
+  font: 500 0.92rem var(--sans); color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; text-align: left;
+}
+.atajos button:hover { border-color: var(--ink); }
+.atajos button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.constructor { display: grid; gap: 24px; }
+@media (min-width: 960px) { .constructor { grid-template-columns: 22rem 1fr; gap: 32px; } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+.campo { display: grid; gap: 4px; margin-bottom: 14px; }
+.campo label { font-weight: 500; font-size: 0.9rem; }
+.campo label small { color: var(--muted); font-weight: 400; }
+.campo .ayuda { color: var(--muted); font-size: 0.82rem; }
+input, select {
+  font: 400 0.95rem var(--sans); color: var(--ink); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%;
+}
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: transparent; }
+.desc-ruta { color: var(--ink-2); font-size: 0.92rem; margin: -4px 0 18px; }
+.salida { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 16px; }
+.barra { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.estado { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+.estado.ok { color: var(--ok); } .estado.err { color: var(--accent); }
+.respuesta { max-height: 460px; overflow: auto; }
+.respuesta pre { white-space: pre-wrap; word-break: break-word; }
+.vacio { color: var(--code-dim); }
+
+/* ---------- MCP ---------- */
+.url-mcp { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--surface); border: 1.5px solid var(--ink); border-radius: 10px; padding: 14px 16px; margin: 0 0 32px; max-width: 40rem; }
+.url-mcp code { font-size: 1.05rem; border: 0; background: none; padding: 0; font-weight: 500; flex: 1; overflow-wrap: anywhere; }
+.url-mcp .copiar { color: var(--ink); background: var(--bg); border-color: var(--line); }
+.pestanas { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.pestanas button {
+  font: 500 0.92rem var(--sans); color: var(--ink-2); background: none; border: 0;
+  border-bottom: 2px solid transparent; padding: 8px 12px; margin-bottom: -1px; cursor: pointer;
+}
+.pestanas button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent-mark); font-weight: 700; }
+.pestana p { margin: 0 0 12px; color: var(--ink-2); font-size: 0.95rem; }
+.tools { margin: 0; }
+.tools div { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.tools dt { font-family: var(--mono); font-size: 0.88rem; font-weight: 500; }
+.tools dd { margin: 2px 0 0; color: var(--ink-2); font-size: 0.95rem; }
+.preguntas { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.preguntas li { background: var(--surface); border-left: 3px solid var(--accent-mark); padding: 12px 16px; border-radius: 0 8px 8px 0; font-size: 0.98rem; }
+.prueba-mcp { margin-top: 40px; }
+.prueba-mcp .fila-in { display: flex; gap: 10px; margin: 12px 0; flex-wrap: wrap; }
+.prueba-mcp input { flex: 1; min-width: 12rem; background: var(--surface); }
+
+/* ---------- descargas y montaje ---------- */
+.archivos { margin: 0; }
+.archivos div { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.archivos dt a { font-family: var(--mono); font-size: 0.9rem; }
+.archivos dd { margin: 0; color: var(--ink-2); font-size: 0.92rem; grid-column: 1 / -1; }
+.pasos { list-style: none; counter-reset: paso; padding: 0; margin: 0; display: grid; gap: 28px; }
+.pasos li { counter-increment: paso; display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: 0 12px; }
+.pasos li::before { content: counter(paso); font-weight: 800; font-size: 1.6rem; line-height: 1.2; color: var(--accent); }
+.pasos li > * { grid-column: 2; }
+.pasos p { margin: 0 0 10px; color: var(--ink-2); }
+
+footer { border-top: 1px solid var(--line); padding: 40px 0 56px; color: var(--muted); font-size: 0.92rem; }
+footer .wrap { display: grid; gap: 12px; }
+footer p { margin: 0; max-width: 60em; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="marca" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="currentColor"/><line x1="7" y1="16" x2="25" y2="16" stroke="#F2A5C9" stroke-width="3" stroke-linecap="round"/><circle cx="17" cy="16" r="5" fill="#E4007C"/></svg>
+      EIC
+    </a>
+    <nav aria-label="Secciones">
+      <a class="opc" href="#que-es">Qué es</a>
+      <a href="#probar">Probar la API</a>
+      <a href="#mcp">MCP</a>
+      <a class="opc" href="#descargas">Descargas</a>
+      <a href="https://github.com/zamax14/EIC-API-MCP">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <h1>La Encuesta Intercensal del INEGI, lista para consultar.</h1>
+      <p class="lede">Los resultados de 2015 y 2025 como API pública y como servidor MCP para tu asistente de IA. Cada cifra viene con su error estándar y su intervalo de confianza, para que sepas cuánto confiar en ella.</p>
+      <div class="acciones">
+        <a class="btn pri" href="#probar">Probar una consulta</a>
+        <a class="btn" href="#mcp">Conectar mi IA</a>
+      </div>
+      <dl class="extremos">
+        <div><dt>API</dt><dd data-origen="/api/docs">https://eic.datzin.com.mx/api/docs</dd></div>
+        <div><dt>MCP</dt><dd data-origen="/mcp">https://eic.datzin.com.mx/mcp</dd></div>
+        <div><dt>Costo</dt><dd style="font-family:var(--sans)">Gratis, sin registro ni llaves. Con límite de peticiones por IP.</dd></div>
+      </dl>
+    </div>
+
+    <figure class="fig" id="grafica" aria-labelledby="graf-titulo">
+      <h2 id="graf-titulo">Viviendas con internet por entidad, 2025</h2>
+      <p class="sub">Porcentaje estimado y su intervalo al 90 %. Pasa el cursor por una entidad para leer su cifra.</p>
+      <div id="plot" class="cargando">Consultando la API…</div>
+      <p class="lectura" id="lectura" aria-live="polite"></p>
+      <details>
+        <summary>Ver como tabla</summary>
+        <div class="tabla-scroll"><table id="graf-tabla"></table></div>
+      </details>
+    </figure>
+  </div>
+</div>
+
+<section id="que-es">
+  <div class="wrap">
+    <h2 class="sec">Qué es</h2>
+    <p class="intro">Un ETL descarga los datos abiertos de la Intercensal directamente de INEGI y los normaliza en una base DuckDB. Sobre esa base corren una API REST de solo lectura y un servidor MCP. El código es abierto y puedes montar tu propia copia con un solo comando.</p>
+    <div class="cols">
+      <div>
+        <h3>Dos encuestas, una sola forma de consultarlas</h3>
+        <div class="tabla-scroll">
+          <table class="datasets">
+            <thead><tr><th>Año</th><th>Desagregación</th><th>Indicadores</th></tr></thead>
+            <tbody>
+              <tr><td>2025</td><td>Nacional, 32 entidades, 2,478 municipios y 233 localidades de 50 000 habitantes o más<br><code>eic2025_localidades</code></td><td>341 en 16 temas</td></tr>
+              <tr><td>2015</td><td>Nacional, 32 entidades y 300 distritos electorales federales<br><code>eic2015_distritos</code></td><td>107 en 9 temas</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="nota">Para comparar 2015 con 2025 hay 33 pares de indicadores equivalentes, curados a mano, a nivel nacional y por entidad.</p>
+      </div>
+      <div>
+        <h3>Son estimaciones, y lo dicen</h3>
+        <p style="margin:0;color:var(--ink-2)">La Intercensal es una encuesta por muestreo. Cada valor trae su coeficiente de variación (CV) y una etiqueta de precisión con el criterio de INEGI:</p>
+        <div class="cv">
+          <div class="a"><b>Alta</b>CV menor a 15</div>
+          <div class="m"><b>Moderada</b>CV de 15 a 30</div>
+          <div class="b"><b>Baja</b>CV mayor a 30</div>
+        </div>
+        <p class="nota">El servidor MCP le pide al modelo que no presente como sólidas las cifras de precisión baja, y solo da por claro un cambio entre años cuando sus intervalos no se traslapan.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="api">
+  <div class="wrap">
+    <h2 class="sec">Cómo usar la API</h2>
+    <p class="intro">Todas las rutas son <code>GET</code>, responden JSON y casi todas aceptan <code>formato=csv</code>. La documentación interactiva con cada parámetro está en <a href="/api/docs" data-href="/api/docs">/api/docs</a>.</p>
+    <div class="cols">
+      <div>
+        <h3>Rutas principales</h3>
+        <dl class="rutas">
+          <div><dt>/api/ubicar?q=</dt><dd>Convierte un nombre en su clave geográfica <code>cvegeo</code>.</dd></div>
+          <div><dt>/api/datasets/{id}/indicadores</dt><dd>Busca indicadores por tema o por texto, sin importar acentos.</dd></div>
+          <div><dt>/api/datasets/{id}/datos</dt><dd>Valores de uno o varios indicadores, con su precisión.</dd></div>
+          <div><dt>/api/datasets/{id}/ranking</dt><dd>Los lugares con valores más altos o más bajos.</dd></div>
+          <div><dt>/api/datasets/{id}/perfil/{cvegeo}</dt><dd>Un lugar frente a su entidad y el país.</dd></div>
+          <div><dt>/api/datasets/{id}/comparar</dt><dd>De 2 a 10 lugares lado a lado.</dd></div>
+          <div><dt>/api/datasets/{id}/brecha-genero/{cvegeo}</dt><dd>Mujeres frente a hombres.</dd></div>
+          <div><dt>/api/evolucion</dt><dd>Qué cambió de 2015 a 2025 en el país o una entidad.</dd></div>
+        </dl>
+      </div>
+      <div>
+        <h3>Lo que regresa cada estimación</h3>
+        <div class="codigo"><pre>{
+  "cvegeo": "010000000",
+  "nombre": "Aguascalientes",
+  "indicador": "PCN_VPH_INTER",
+  "indicador_nombre": "Porcentaje de viviendas particulares habitadas donde se dispone de Internet",
+  "valor": 86.79,
+  "error_estandar": 0.55,
+  "lim_inf": 85.86,          <span class="com">// intervalo al 90 %</span>
+  "lim_sup": 87.66,
+  "coef_var": 0.63,
+  "precision": "alta",
+  "nota": null               <span class="com">// "MI": muestra insuficiente</span>
+}</pre></div>
+        <p class="nota"><code>nivel</code> acepta <code>nacional</code>, <code>entidad</code>, <code>municipio</code>, <code>localidad</code>, <code>resto_localidades</code> o <code>distrito</code>. Las claves de entidad van de <code>01</code> a <code>32</code>; <code>00</code> es el país.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="probar">
+  <div class="wrap">
+    <h2 class="sec">Prueba una consulta</h2>
+    <p class="intro">Elige un ejemplo o arma tu propia petición. Te damos el <code>curl</code> listo para copiar y puedes ejecutarla aquí mismo.</p>
+
+    <ul class="atajos" id="atajos" aria-label="Ejemplos"></ul>
+
+    <div class="constructor">
+      <form class="panel" id="form" autocomplete="off">
+        <div class="campo">
+          <label for="ruta">Ruta</label>
+          <select id="ruta"></select>
+        </div>
+        <p class="desc-ruta" id="desc-ruta"></p>
+        <div id="params"></div>
+        <button class="btn pri" type="submit">Ejecutar petición</button>
+      </form>
+
+      <div class="salida">
+        <div>
+          <h3>curl</h3>
+          <div class="codigo"><pre id="curl"></pre><button class="copiar" type="button" data-copiar="curl">Copiar</button></div>
+        </div>
+        <div>
+          <div class="barra">
+            <h3 style="margin:0">Respuesta</h3>
+            <span class="estado" id="estado" aria-live="polite"></span>
+            <a id="abrir" href="#" target="_blank" rel="noopener" style="margin-left:auto;font-size:0.9rem">Abrir en otra pestaña</a>
+          </div>
+          <div class="codigo respuesta" style="margin-top:10px"><pre id="respuesta"><span class="vacio">Ejecuta la petición para ver la respuesta.</span></pre></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="mcp">
+  <div class="wrap">
+    <h2 class="sec">Conecta tu IA con MCP</h2>
+    <p class="intro">MCP es el protocolo con el que asistentes como Claude, ChatGPT, Cursor o Codex usan herramientas externas. Agrega este servidor y pregunta en español: la IA busca el lugar, elige los indicadores y te responde con la precisión de cada cifra.</p>
+
+    <div class="url-mcp">
+      <code id="url-mcp">https://eic.datzin.com.mx/mcp</code>
+      <button class="copiar" type="button" data-copiar="url-mcp">Copiar URL</button>
+    </div>
+
+    <div class="cols">
+      <div>
+        <h3>Configúralo en tu cliente</h3>
+        <div class="pestanas" role="tablist" aria-label="Clientes MCP" id="pestanas"></div>
+        <div id="pestana-panel" role="tabpanel"></div>
+      </div>
+      <div>
+        <h3>Pregúntale cosas como</h3>
+        <ul class="preguntas">
+          <li>Hazme el perfil sociodemográfico de Zapopan y compáralo con Jalisco y con el país.</li>
+          <li>¿Cuáles son los 10 municipios de Oaxaca con mayor porcentaje de población sin afiliación a servicios de salud? Excluye las estimaciones poco precisas.</li>
+          <li>¿Qué cambió en Yucatán entre la Intercensal 2015 y la 2025? Solo dame los cambios estadísticamente claros.</li>
+          <li>¿Cuál es la brecha de género en escolaridad y participación económica en Chiapas?</li>
+          <li>Arma un CSV con el porcentaje de viviendas con internet por municipio de Jalisco y grafícalo.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="cols" style="margin-top:48px">
+      <div>
+        <h3>Herramientas</h3>
+        <dl class="tools">
+          <div><dt>ubicar_lugar</dt><dd>Convierte un nombre como <i>Juárez, Chihuahua</i> en su clave.</dd></div>
+          <div><dt>perfil_lugar</dt><dd>Ficha de un lugar frente a su entidad y el país, por tema o de vulnerabilidad social.</dd></div>
+          <div><dt>comparar_lugares</dt><dd>Tabla de indicadores para 2 a 10 lugares.</dd></div>
+          <div><dt>ranking</dt><dd>Mayores o menores valores de un indicador, opcionalmente dentro de una entidad.</dd></div>
+          <div><dt>brecha_genero</dt><dd>Indicadores de mujeres frente a hombres.</dd></div>
+          <div><dt>evolucion_2015_2025</dt><dd>Cambios entre encuestas, indicando si la diferencia es estadísticamente clara.</dd></div>
+          <div><dt>buscar_indicadores, buscar_geografias, obtener_datos, listar_datasets</dt><dd>Exploración y datos crudos.</dd></div>
+        </dl>
+        <p class="nota">También ofrece prompts guiados (en Claude Code aparecen como <code>/mcp__eic__perfil_lugar</code>, <code>/mcp__eic__evolucion_2015_2025</code>…) y recursos con la guía metodológica y el diccionario de indicadores.</p>
+      </div>
+      <div class="prueba-mcp" style="margin-top:0">
+        <h3>Llama una herramienta sin instalar nada</h3>
+        <p style="margin:0;color:var(--ink-2)">El servidor habla JSON-RPC sobre HTTP. Esto es lo que hace tu IA por dentro cuando busca un lugar:</p>
+        <form class="fila-in" id="form-mcp">
+          <label class="sr" for="mcp-texto" style="position:absolute;left:-9999px">Lugar</label>
+          <input id="mcp-texto" value="Juárez, Chihuahua">
+          <button class="btn" type="submit">Llamar ubicar_lugar</button>
+        </form>
+        <div class="codigo"><pre id="curl-mcp"></pre><button class="copiar" type="button" data-copiar="curl-mcp">Copiar</button></div>
+        <div class="codigo respuesta"><pre id="resp-mcp"><span class="vacio">La respuesta del servidor MCP aparecerá aquí.</span></pre></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="descargas">
+  <div class="wrap">
+    <h2 class="sec">Descárgalo todo</h2>
+    <p class="intro">Si prefieres trabajar con la tabla completa, cada archivo se carga con una línea de pandas.</p>
+    <div class="cols">
+      <div>
+        <div class="codigo"><pre id="pandas">import pandas as pd
+
+<span class="com"># una fila por lugar, una columna por indicador</span>
+df = pd.read_csv("https://eic.datzin.com.mx/api/descargas/eic2025.csv")
+
+<span class="com"># qué significa cada columna</span>
+dic = pd.read_csv("https://eic.datzin.com.mx/api/descargas/indicadores.csv")</pre><button class="copiar" type="button" data-copiar="pandas">Copiar</button></div>
+        <p class="nota">Cualquier consulta de la API también sale como CSV con <code>formato=csv</code>. Hay notebooks de ejemplo que se abren en <a href="https://colab.research.google.com/github/zamax14/EIC-API-MCP/blob/main/ejemplos/notebooks/01_inicio_rapido.ipynb">Google Colab</a>.</p>
+      </div>
+      <dl class="archivos">
+        <div><dt><a data-href="/api/descargas/eic2025.csv" href="/api/descargas/eic2025.csv">eic2025.csv</a></dt><dd>2,776 lugares por 341 indicadores. 5 MB.</dd></div>
+        <div><dt><a data-href="/api/descargas/eic2015.csv" href="/api/descargas/eic2015.csv">eic2015.csv</a></dt><dd>333 lugares por 107 indicadores.</dd></div>
+        <div><dt><a data-href="/api/descargas/eic2025_completo.csv.gz" href="/api/descargas/eic2025_completo.csv.gz">eic2025_completo.csv.gz</a></dt><dd>Una fila por lugar e indicador, con error estándar, límites al 90 % y precisión. 28 MB.</dd></div>
+        <div><dt><a data-href="/api/descargas/eic2015_completo.csv.gz" href="/api/descargas/eic2015_completo.csv.gz">eic2015_completo.csv.gz</a></dt><dd>Lo mismo para 2015.</dd></div>
+        <div><dt><a data-href="/api/descargas/indicadores.csv" href="/api/descargas/indicadores.csv">indicadores.csv</a></dt><dd>Diccionario de ambos años y su comparabilidad.</dd></div>
+        <div><dt><a data-href="/api/descargas" href="/api/descargas">Todos los archivos</a></dt><dd>Incluye cada tabla del modelo en Parquet, para polars o DuckDB.</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section id="montalo">
+  <div class="wrap">
+    <h2 class="sec">Móntalo tú mismo</h2>
+    <p class="intro">La instancia pública tiene límite de peticiones por IP. Si necesitas más volumen, solo hace falta Docker con Compose v2.</p>
+    <ol class="pasos">
+      <li>
+        <h3>Clona el repositorio</h3>
+        <div class="codigo"><pre>git clone https://github.com/zamax14/EIC-API-MCP.git
+cd EIC-API-MCP</pre></div>
+      </li>
+      <li>
+        <h3>Levanta la pila</h3>
+        <p>El ETL descarga los datos de INEGI y construye la base; después arrancan la API, el MCP y nginx.</p>
+        <div class="codigo"><pre>docker compose up -d --build</pre></div>
+      </li>
+      <li>
+        <h3>Compruébalo</h3>
+        <p>Todo queda en <code>http://127.0.0.1:8081</code>: esta página en <code>/</code>, la API en <code>/api</code> y el MCP en <code>/mcp</code>. Ponle delante tu proxy con TLS para publicarlo.</p>
+        <div class="codigo"><pre>curl http://127.0.0.1:8081/api/datasets</pre></div>
+      </li>
+    </ol>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Datos: <b>INEGI, Encuesta Intercensal 2015 y 2025</b>, usados conforme a sus <a href="https://www.inegi.org.mx/inegi/terminos.html">términos de libre uso</a>. Este proyecto no está afiliado al INEGI; si citas los datos, menciona a INEGI como fuente.</p>
+    <p>Código bajo licencia MIT en <a href="https://github.com/zamax14/EIC-API-MCP">github.com/zamax14/EIC-API-MCP</a>. Un proyecto de <a href="https://datzin.com.mx">datzin</a>.</p>
+  </div>
+</footer>
+
+<script>
+// Servida desde nginx usa su propio origen (sirve igual en eic.datzin.com.mx que en una copia local);
+// abierta como archivo apunta a la instancia pública.
+const ORIGEN = location.protocol === "file:" ? "https://eic.datzin.com.mx" : location.origin;
+const API = ORIGEN + "/api";
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const num = (v, d = 1) => v == null ? "s/d" : v.toLocaleString("es-MX", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+document.querySelectorAll("[data-origen]").forEach((el) => (el.textContent = ORIGEN + el.dataset.origen));
+document.querySelectorAll("[data-href]").forEach((el) => (el.href = ORIGEN + el.dataset.href));
+$("#url-mcp").textContent = ORIGEN + "/mcp";
+$("#pandas").innerHTML = $("#pandas").innerHTML.replaceAll("https://eic.datzin.com.mx", ORIGEN);
+
+async function pedir(url, opts = {}) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), 20000);
+  try { return await fetch(url, { ...opts, signal: ctl.signal }); } finally { clearTimeout(t); }
+}
+
+/* ---------- gráfica de la portada ---------- */
+const CORTO = { "Coahuila de Zaragoza": "Coahuila", "Michoacán de Ocampo": "Michoacán", "Veracruz de Ignacio de la Llave": "Veracruz" };
+
+async function grafica() {
+  const ind = "PCN_VPH_INTER", base = `${API}/datasets/eic2025_localidades/datos?indicador=${ind}`;
+  const plot = $("#plot");
+  try {
+    const [e, n] = await Promise.all([pedir(`${base}&nivel=entidad&limit=40`), pedir(`${base}&nivel=nacional`)]);
+    if (!e.ok || !n.ok) throw new Error();
+    const filas = (await e.json()).items.filter((f) => f.valor != null).sort((a, b) => b.valor - a.valor);
+    const nac = (await n.json()).items[0];
+    const lo = Math.floor(Math.min(...filas.map((f) => f.lim_inf)) / 20) * 20, hi = 100;
+    const x = (v) => ((v - lo) / (hi - lo)) * 100;
+    plot.className = "plot";
+    plot.style.setProperty("--ref", x(nac.valor) + "%");
+    plot.innerHTML = filas.map((f, i) => `
+      <div class="fila" data-i="${i}">
+        <div class="et">${esc(CORTO[f.nombre] || f.nombre)}</div>
+        <div class="pista"><span class="ic" style="left:${x(f.lim_inf)}%;width:${x(f.lim_sup) - x(f.lim_inf)}%"></span><span class="pt" style="left:${x(f.valor)}%"></span></div>
+      </div>`).join("") +
+      `<div></div><div class="eje">${[...Array((hi - lo) / 20 + 1)].map((_, k) => `<span style="left:${x(lo + k * 20)}%">${lo + k * 20}${lo + k * 20 === hi ? " %" : ""}</span>`).join("")}</div>`;
+    plot.setAttribute("role", "img");
+    plot.setAttribute("aria-label", `De ${num(filas.at(-1).valor)} % en ${filas.at(-1).nombre} a ${num(filas[0].valor)} % en ${filas[0].nombre}; el promedio nacional es ${num(nac.valor)} %.`);
+    const lectura = $("#lectura");
+    const base0 = `<span class="ref"></span>Nacional: <b>${num(nac.valor)} %</b> (${num(nac.lim_inf)} a ${num(nac.lim_sup)} %). Fuente: <code>/api/datasets/eic2025_localidades/datos?indicador=${ind}</code>`;
+    lectura.innerHTML = base0;
+    plot.addEventListener("mouseover", (ev) => {
+      const fila = ev.target.closest(".fila"); if (!fila) return;
+      const f = filas[fila.dataset.i];
+      lectura.innerHTML = `<b>${esc(f.nombre)}: ${num(f.valor)} %</b>. Intervalo al 90 %: ${num(f.lim_inf)} a ${num(f.lim_sup)} %. CV ${num(f.coef_var, 2)}, precisión ${esc(f.precision)}.`;
+    });
+    plot.addEventListener("mouseleave", () => (lectura.innerHTML = base0));
+    $("#graf-tabla").innerHTML = `<thead><tr><th>Entidad</th><th>%</th><th>Lím. inf.</th><th>Lím. sup.</th></tr></thead><tbody>` +
+      filas.map((f) => `<tr><td>${esc(f.nombre)}</td><td>${num(f.valor)}</td><td>${num(f.lim_inf)}</td><td>${num(f.lim_sup)}</td></tr>`).join("") + "</tbody>";
+  } catch {
+    plot.textContent = "No se pudo consultar la API en este momento. Intenta recargar la página.";
+  }
+}
+grafica();
+
+/* ---------- constructor de peticiones ---------- */
+const ENTIDADES = ["Estados Unidos Mexicanos", "Aguascalientes", "Baja California", "Baja California Sur", "Campeche", "Coahuila", "Colima", "Chiapas", "Chihuahua", "Ciudad de México", "Durango", "Guanajuato", "Guerrero", "Hidalgo", "Jalisco", "Estado de México", "Michoacán", "Morelos", "Nayarit", "Nuevo León", "Oaxaca", "Puebla", "Querétaro", "Quintana Roo", "San Luis Potosí", "Sinaloa", "Sonora", "Tabasco", "Tamaulipas", "Tlaxcala", "Veracruz", "Yucatán", "Zacatecas"]
+  .map((n, i) => [String(i).padStart(2, "0"), `${String(i).padStart(2, "0")} · ${n}`]);
+const NIVELES = ["nacional", "entidad", "municipio", "localidad", "resto_localidades", "distrito"];
+const DATASET = { n: "dataset", t: "sel", ops: ["eic2025_localidades", "eic2015_distritos"], ruta: true };
+const FORMATO = { n: "formato", t: "sel", ops: ["json", "csv"], omitir: "json" };
+const NIVEL = { n: "nivel", t: "sel", ops: NIVELES, vacio: true };
+const ENT = { n: "cve_ent", t: "ent", vacio: true, ayuda: "Filtra a una entidad" };
+
+const RUTAS = {
+  ubicar: { ruta: "/ubicar", desc: "Convierte el nombre de un lugar en su clave geográfica (cvegeo).",
+    params: [{ n: "q", req: true, ph: "Zapopan", def: "Juárez, Chihuahua" }, { ...DATASET, ruta: false, omitir: "eic2025_localidades" }, FORMATO] },
+  indicadores: { ruta: "/datasets/{dataset}/indicadores", desc: "Busca indicadores en código, nombre y descripción, ignorando acentos.",
+    params: [DATASET, { n: "q", ph: "internet", def: "desplazamiento" }, { n: "tema", t: "num", ph: "16", ayuda: "Id del tema, de /temas" }, FORMATO] },
+  datos: { ruta: "/datasets/{dataset}/datos", desc: "Valores de uno o varios indicadores, con error estándar, límites y precisión.",
+    params: [DATASET, { n: "indicador", req: true, ph: "POBTOT,POBFEM", def: "POBTOT", ayuda: "Varios separados por coma" }, { ...NIVEL, def: "entidad" }, ENT,
+      { n: "cvegeo", ph: "141200000", ayuda: "Claves separadas por coma" }, { n: "limit", t: "num", ph: "1000", ayuda: "Hasta 10 000" }, { n: "offset", t: "num", ph: "0" }, FORMATO] },
+  ranking: { ruta: "/datasets/{dataset}/ranking", desc: "Los lugares con los valores más altos o más bajos de un indicador.",
+    params: [DATASET, { n: "indicador", req: true, def: "PCN_PSINDER" }, { n: "nivel", t: "sel", ops: NIVELES, def: "municipio" }, { ...ENT, def: "14" },
+      { n: "orden", t: "sel", ops: ["desc", "asc"], omitir: "desc" }, { n: "n", t: "num", ph: "10", ayuda: "Hasta 100" },
+      { n: "excluir_baja_precision", t: "sel", ops: ["false", "true"], omitir: "false" }, FORMATO] },
+  perfil: { ruta: "/datasets/{dataset}/perfil/{cvegeo}", desc: "Un lugar junto a su entidad y el país.",
+    params: [DATASET, { n: "cvegeo", req: true, ruta: true, def: "141200000", ayuda: "Búscala con /ubicar" },
+      { n: "conjunto", t: "sel", ops: ["destacados", "vulnerabilidad"], def: "vulnerabilidad", omitir: "destacados" }, { n: "tema", ph: "vivienda" }, { n: "indicador", ph: "POBTOT,PCN_VPH_INTER" }] },
+  comparar: { ruta: "/datasets/{dataset}/comparar", desc: "De 2 a 10 lugares lado a lado.",
+    params: [DATASET, { n: "cvegeo", req: true, def: "190390000,140390000,211140000", ayuda: "De 2 a 10 claves separadas por coma" },
+      { n: "tema", ph: "educacion", def: "vivienda" }, { n: "indicador", ph: "POBTOT,PCN_VPH_INTER" }] },
+  brecha: { ruta: "/datasets/{dataset}/brecha-genero/{cvegeo}", desc: "Indicadores de mujeres frente a hombres en un lugar.",
+    params: [DATASET, { n: "cvegeo", req: true, ruta: true, def: "070000000" }, { n: "tema", ph: "educacion" }] },
+  evolucion: { ruta: "/evolucion", desc: "Qué cambió entre 2015 y 2025 con indicadores equivalentes.",
+    params: [{ ...ENT, vacio: false, def: "14", ayuda: "00 es el país" }, { n: "tema", ph: "vivienda" }, FORMATO] },
+  geografias: { ruta: "/datasets/{dataset}/geografias", desc: "Catálogo de lugares por nivel, entidad o nombre.",
+    params: [DATASET, NIVEL, ENT, { n: "q", ph: "tijuana" }, { n: "limit", t: "num", ph: "1000" }, FORMATO] },
+  temas: { ruta: "/datasets/{dataset}/temas", desc: "Los temas de un dataset y cuántos indicadores tiene cada uno.", params: [DATASET, FORMATO] },
+  entidades: { ruta: "/entidades", desc: "Catálogo de entidades federativas.", params: [FORMATO] },
+  equivalencias: { ruta: "/equivalencias", desc: "Pares de indicadores comparables entre 2015 y 2025.", params: [FORMATO] },
+  datasets: { ruta: "/datasets", desc: "Los datasets disponibles y su fuente en INEGI.", params: [] },
+};
+
+const ATAJOS = [
+  ["Población 2025 por entidad", "datos", { indicador: "POBTOT", nivel: "entidad" }],
+  ["Indicadores sobre desplazamiento", "indicadores", { q: "desplazamiento" }],
+  ["Buscar Juárez, Chihuahua", "ubicar", { q: "Juárez, Chihuahua" }],
+  ["Municipios de Jalisco sin servicios de salud", "ranking", { indicador: "PCN_PSINDER", nivel: "municipio", cve_ent: "14" }],
+  ["Vulnerabilidad social en Zapopan", "perfil", { cvegeo: "141200000", conjunto: "vulnerabilidad" }],
+  ["Jalisco de 2015 a 2025", "evolucion", { cve_ent: "14" }],
+];
+
+const sel = $("#ruta"), cont = $("#params");
+sel.innerHTML = Object.entries(RUTAS).map(([k, r]) => `<option value="${k}">${r.ruta}</option>`).join("");
+
+function pintarCampos(valores) {
+  const r = RUTAS[sel.value];
+  $("#desc-ruta").textContent = r.desc;
+  cont.innerHTML = r.params.map((p) => {
+    const id = "p-" + p.n, v = valores ? valores[p.n] ?? "" : p.def ?? "";
+    const etiqueta = `<label for="${id}">${p.n}${p.req ? "" : " <small>opcional</small>"}</label>`;
+    let control;
+    if (p.t === "sel" || p.t === "ent") {
+      const ops = p.t === "ent" ? ENTIDADES : p.ops.map((o) => [o, o]);
+      const vacio = p.vacio ? `<option value="">(sin filtro)</option>` : "";
+      control = `<select id="${id}" name="${p.n}">${vacio}${ops.map(([val, txt]) => `<option value="${val}"${val === String(v) ? " selected" : ""}>${esc(txt)}</option>`).join("")}</select>`;
+    } else {
+      control = `<input id="${id}" name="${p.n}" ${p.t === "num" ? 'inputmode="numeric" pattern="[0-9]*"' : ""} placeholder="${esc(p.ph || "")}" value="${esc(v)}"${p.req ? " required" : ""}>`;
+    }
+    return `<div class="campo">${etiqueta}${control}${p.ayuda ? `<span class="ayuda">${esc(p.ayuda)}</span>` : ""}</div>`;
+  }).join("");
+  actualizar();
+}
+
+function urlActual() {
+  const r = RUTAS[sel.value];
+  let ruta = r.ruta;
+  const qs = [];
+  for (const p of r.params) {
+    const v = cont.querySelector(`[name="${p.n}"]`).value.trim();
+    if (p.ruta) ruta = ruta.replace(`{${p.n}}`, encodeURIComponent(v || `{${p.n}}`));
+    else if (v && v !== p.omitir) qs.push(p.n + "=" + encodeURIComponent(v).replaceAll("%2C", ","));
+  }
+  return API + ruta + (qs.length ? "?" + qs.join("&") : "");
+}
+
+function actualizar() {
+  const url = urlActual();
+  $("#curl").textContent = `curl "${url}"`;
+  $("#abrir").href = url;
+}
+
+async function ejecutar() {
+  const url = urlActual(), est = $("#estado"), out = $("#respuesta");
+  est.className = "estado"; est.textContent = "Consultando…";
+  const t0 = performance.now();
+  try {
+    const res = await pedir(url);
+    const texto = await res.text();
+    const ms = Math.round(performance.now() - t0);
+    est.className = "estado " + (res.ok ? "ok" : "err");
+    est.textContent = `${res.status} · ${ms} ms · ${(texto.length / 1024).toFixed(1)} KB`;
+    let cuerpo = texto;
+    try { cuerpo = JSON.stringify(JSON.parse(texto), null, 2); } catch {}
+    const lineas = cuerpo.split("\n");
+    out.textContent = lineas.length > 300 ? lineas.slice(0, 300).join("\n") + `\n\n… ${lineas.length - 300} líneas más. Abre la URL en otra pestaña para verla completa.` : cuerpo;
+  } catch (e) {
+    est.className = "estado err";
+    est.textContent = e.name === "AbortError" ? "Sin respuesta tras 20 s" : "No se pudo conectar";
+    out.textContent = "Revisa tu conexión o inténtalo de nuevo. Si recibes 429, excediste el límite de peticiones por IP: espera unos segundos.";
+  }
+}
+
+sel.addEventListener("change", () => { marcarAtajo(-1); pintarCampos(); });
+cont.addEventListener("input", actualizar);
+$("#form").addEventListener("submit", (e) => { e.preventDefault(); ejecutar(); });
+
+const listaAtajos = $("#atajos");
+listaAtajos.innerHTML = ATAJOS.map(([txt], i) => `<li><button type="button" data-i="${i}" aria-pressed="false">${esc(txt)}</button></li>`).join("");
+function marcarAtajo(i) { listaAtajos.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === i))); }
+listaAtajos.addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  const [, ruta, vals] = ATAJOS[b.dataset.i];
+  sel.value = ruta;
+  pintarCampos({ dataset: "eic2025_localidades", ...vals });
+  marcarAtajo(+b.dataset.i);
+  ejecutar();
+});
+pintarCampos();
+
+/* ---------- clientes MCP ---------- */
+const MCP = ORIGEN + "/mcp";
+const CLIENTES = [
+  ["Claude Code", "Desde la terminal:", `claude mcp add --transport http eic ${MCP}`],
+  ["claude.ai y Claude Desktop", "En Configuración → Conectores → Agregar conector personalizado, pega la URL. O en <code>claude_desktop_config.json</code>, con el puente mcp-remote:",
+    JSON.stringify({ mcpServers: { eic: { command: "npx", args: ["-y", "mcp-remote", MCP] } } }, null, 2)],
+  ["ChatGPT", "Activa el modo desarrollador en Configuración → Aplicaciones y conectores → Configuración avanzada. Crea un conector con esta URL y elige “Sin autenticación”.", MCP],
+  ["Cursor y Windsurf", "En <code>mcp.json</code>:", JSON.stringify({ mcpServers: { eic: { url: MCP } } }, null, 2)],
+  ["VS Code", "En <code>.vscode/mcp.json</code>:", JSON.stringify({ servers: { eic: { type: "http", url: MCP } } }, null, 2)],
+  ["Codex", "En <code>~/.codex/config.toml</code>, o con <code>codex mcp add eic --url " + MCP + "</code>:", `[mcp_servers.eic]\nurl = "${MCP}"`],
+];
+const pest = $("#pestanas"), panel = $("#pestana-panel");
+pest.innerHTML = CLIENTES.map(([n], i) => `<button type="button" role="tab" id="tab-${i}" aria-controls="pestana-panel" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${n}</button>`).join("");
+function abrirPestana(i) {
+  const [, txt, cod] = CLIENTES[i];
+  pest.querySelectorAll("button").forEach((b, k) => { b.setAttribute("aria-selected", String(k === i)); b.tabIndex = k === i ? 0 : -1; });
+  panel.setAttribute("aria-labelledby", "tab-" + i);
+  panel.innerHTML = `<div class="pestana"><p>${txt}</p><div class="codigo"><pre id="cfg">${esc(cod)}</pre><button class="copiar" type="button" data-copiar="cfg">Copiar</button></div></div>`;
+}
+pest.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) abrirPestana([...pest.children].indexOf(b)); });
+pest.addEventListener("keydown", (e) => {
+  const bs = [...pest.children], i = bs.indexOf(document.activeElement);
+  const d = { ArrowRight: 1, ArrowLeft: -1 }[e.key]; if (d == null || i < 0) return;
+  const j = (i + d + bs.length) % bs.length; abrirPestana(j); bs[j].focus();
+});
+abrirPestana(0);
+
+/* ---------- llamada directa al MCP ---------- */
+function cuerpoMcp() {
+  return { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "ubicar_lugar", arguments: { texto: $("#mcp-texto").value.trim() } } };
+}
+function curlMcp() {
+  $("#curl-mcp").textContent = `curl -X POST ${MCP} \\\n  -H "Content-Type: application/json" \\\n  -H "Accept: application/json, text/event-stream" \\\n  -d '${JSON.stringify(cuerpoMcp()).replaceAll("'", "'\\''")}'`;
+}
+$("#mcp-texto").addEventListener("input", curlMcp);
+curlMcp();
+$("#form-mcp").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const out = $("#resp-mcp");
+  out.textContent = "Llamando al servidor…";
+  try {
+    const res = await pedir(MCP, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream" }, body: JSON.stringify(cuerpoMcp()) });
+    const r = await res.json();
+    const contenido = r.result?.structuredContent ?? r.result?.content?.map((c) => { try { return JSON.parse(c.text); } catch { return c.text; } }) ?? r;
+    out.textContent = JSON.stringify(contenido, null, 2);
+  } catch {
+    out.textContent = "No se pudo llamar al servidor MCP desde el navegador. Copia el curl y pruébalo en tu terminal.";
+  }
+});
+
+/* ---------- copiar ---------- */
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-copiar]"); if (!b) return;
+  const original = b.textContent;
+  try { await navigator.clipboard.writeText(document.getElementById(b.dataset.copiar).textContent); b.textContent = "Copiado"; }
+  catch { b.textContent = "Selecciona y copia"; }
+  setTimeout(() => (b.textContent = original), 1600);
+});
+</script>
+</body>
+</html>
