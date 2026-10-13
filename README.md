@@ -15,6 +15,7 @@ Un ETL descarga los paquetes de datos abiertos directamente de INEGI y los norma
 
 | Qué | URL |
 |---|---|
+| Presentación del proyecto, con constructor de consultas | **https://eic.datzin.com.mx** |
 | Documentación interactiva (Swagger) | **https://eic.datzin.com.mx/api/docs** |
 | Esquema OpenAPI | https://eic.datzin.com.mx/api/openapi.json |
 | API REST | `https://eic.datzin.com.mx/api/…` |
@@ -336,7 +337,7 @@ Al arrancar, compose levanta todo en este orden:
 
 1. **`etl`** descarga los datos de INEGI, construye la base en un volumen y termina.
 2. **`api`** y **`mcp`** arrancan solo si el ETL terminó bien, y abren la base en solo lectura.
-3. **`nginx`** las expone en `http://127.0.0.1:8081`: la API en `/api` y el MCP en `/mcp`.
+3. **`nginx`** las expone en `http://127.0.0.1:8081`: la presentación en `/` ([`web/index.html`](web/index.html)), la API en `/api` y el MCP en `/mcp`.
 
 ```sh
 curl http://127.0.0.1:8081/api/datasets   # comprobar
