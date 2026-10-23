@@ -59,7 +59,7 @@ services:
       retries: 3
 
   nginx:
-    image: nginx:1.29-alpine
+    image: nginx:1.30-alpine
     depends_on:
       api:
         condition: service_healthy
